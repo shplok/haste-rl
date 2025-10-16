@@ -4,16 +4,20 @@ from mss import mss
 from PIL import Image
 import cv2
 from pynput.keyboard import Controller, Key
-import pydirectinput  # Works with hidden cursor games!
+import pydirectinput
+import pytesseract
 import time
+import re
+
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
 
 class HasteEnv(gym.Env):
     """Custom Environment for Haste game."""
     
-    def __init__(self, mouse_sensitivity=1000):
+    def __init__(self, mouse_sensitivity=500):
         super(HasteEnv, self).__init__()
         
-        # Define action space with CONTINUOUS mouse control
+        # Define action space
         self.action_space = gym.spaces.Dict({
             'movement': gym.spaces.Discrete(5),
             'mouse_x': gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32),
@@ -34,14 +38,33 @@ class HasteEnv(gym.Env):
             "height": 1075
         }
         
+        # Regions for OCR (relative to monitor)
+        # You'll need to adjust these based on where speed/rank appear
+        self.speed_region = {
+            "top": self.monitor["top"] + 20,
+            "left": self.monitor["left"] + 20,
+            "width": 150,
+            "height": 60
+        }
+        
+        self.rank_region = {
+            "top": self.monitor["top"] + 80,
+            "left": self.monitor["left"] + 20,
+            "width": 100,
+            "height": 50
+        }
+        
         # Input controllers
         self.keyboard = Controller()
-        
-        # Mouse sensitivity (adjust based on in-game sensitivity)
         self.mouse_sensitivity = mouse_sensitivity
         
         # Track control states
         self.keys_pressed = set()
+        
+        # Reward tracking
+        self.previous_speed = 0
+        self.previous_rank = 'E'
+        self.rank_values = {'E': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'S': 5}
         
         # State
         self.current_step = 0
@@ -51,6 +74,8 @@ class HasteEnv(gym.Env):
         """Reset the environment."""
         super().reset(seed=seed)
         self.current_step = 0
+        self.previous_speed = 0
+        self.previous_rank = 'E'
         
         # Release all keys
         self._release_all_keys()
@@ -71,10 +96,12 @@ class HasteEnv(gym.Env):
         time.sleep(0.05)
         
         obs = self._get_observation()
-        reward = 1.0
+        
+        # Calculate reward based on speed and rank
+        reward = self._calculate_reward()
         
         self.current_step += 1
-        terminated = False  # TODO: Detect game over
+        terminated = self._is_game_over()
         truncated = self.current_step >= self.max_steps
         
         return obs, reward, terminated, truncated, {}
@@ -87,29 +114,116 @@ class HasteEnv(gym.Env):
         img = cv2.resize(img, (128, 128))
         return img
     
+    def _read_speed(self):
+        """Read speed value from screen using OCR."""
+        try:
+            # Capture speed region
+            screenshot = self.sct.grab(self.speed_region)
+            img = np.array(screenshot)
+            
+            # Preprocess for better OCR
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+            _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
+            
+            # OCR
+            text = pytesseract.image_to_string(img, config='--psm 7 digits')
+            
+            # Extract number
+            numbers = re.findall(r'\d+', text)
+            if numbers:
+                speed = int(numbers[0])
+                return min(speed, 200)  # Cap at 200
+            
+        except Exception as e:
+            pass
+        
+        return self.previous_speed  # Return previous if OCR fails
+    
+    def _read_rank(self):
+        """Read rank from screen using OCR."""
+        try:
+            # Capture rank region
+            screenshot = self.sct.grab(self.rank_region)
+            img = np.array(screenshot)
+            
+            # Preprocess
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+            _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
+            
+            # OCR
+            text = pytesseract.image_to_string(img, config='--psm 10').strip().upper()
+            
+            # Extract rank letter
+            for char in text:
+                if char in self.rank_values:
+                    return char
+            
+        except Exception as e:
+            pass
+        
+        return self.previous_rank  # Return previous if OCR fails
+    
+    def _calculate_reward(self):
+        """Calculate reward based on speed and rank."""
+        # Read current values
+        current_speed = self._read_speed()
+        current_rank = self._read_rank()
+        
+        # Base reward: small positive for survival
+        reward = 0.01
+        
+        # Speed reward (normalized to 0-1, where 200 speed = max)
+        speed_reward = current_speed / 200.0
+        reward += speed_reward * 0.5  # Speed contributes up to 0.5 reward
+        
+        # Speed improvement bonus
+        if current_speed > self.previous_speed:
+            reward += 0.1
+        
+        # Rank reward
+        rank_value = self.rank_values.get(current_rank, 0)
+        reward += rank_value * 0.1  # Each rank tier adds 0.1
+        
+        # Rank improvement bonus
+        prev_rank_value = self.rank_values.get(self.previous_rank, 0)
+        if rank_value > prev_rank_value:
+            reward += 1.0  # Big bonus for improving rank!
+        
+        # Update previous values
+        self.previous_speed = current_speed
+        self.previous_rank = current_rank
+        
+        return reward
+    
+    def _is_game_over(self):
+        """Detect if game is over (TODO: implement detection)."""
+        # TODO: Add detection for falling off map, level complete, etc.
+        # Could use OCR to detect "Game Over" text or screen color changes
+        return False
+    
     def _take_action(self, movement, mouse_x, mouse_y):
         """Execute game controls."""
         
-        # 1. Handle movement (WASD)
+        # Handle movement (WASD)
         for key in ['w', 'a', 's', 'd']:
             if key in self.keys_pressed:
                 self.keyboard.release(key)
                 self.keys_pressed.discard(key)
         
-        if movement == 1:  # Forward
+        if movement == 1:
             self.keyboard.press('w')
             self.keys_pressed.add('w')
-        elif movement == 2:  # Back
+        elif movement == 2:
             self.keyboard.press('s')
             self.keys_pressed.add('s')
-        elif movement == 3:  # Left
+        elif movement == 3:
             self.keyboard.press('a')
             self.keys_pressed.add('a')
-        elif movement == 4:  # Right
+        elif movement == 4:
             self.keyboard.press('d')
             self.keys_pressed.add('d')
         
-        # 2. Handle mouse with pydirectinput (works with hidden cursor!)
+        # Handle mouse
         mouse_dx = int(mouse_x * self.mouse_sensitivity)
         mouse_dy = int(mouse_y * self.mouse_sensitivity)
         
@@ -126,25 +240,3 @@ class HasteEnv(gym.Env):
     def close(self):
         """Cleanup."""
         self._release_all_keys()
-
-# Quick test
-if __name__ == "__main__":
-    print("Starting test in 5 seconds - click in Haste window!")
-    time.sleep(5)
-    
-    env = HasteEnv(mouse_sensitivity=500)
-    obs, info = env.reset()
-    
-    print("Moving forward and looking around...")
-    for _ in range(30):
-        # Random actions
-        import random
-        movement = random.choice([0, 1, 3, 4])  # No backward
-        mouse_x = np.array([random.uniform(-0.5, 0.5)])
-        mouse_y = np.array([random.uniform(-0.3, 0.3)])
-        
-        action = {'movement': movement, 'mouse_x': mouse_x, 'mouse_y': mouse_y}
-        obs, reward, terminated, truncated, info = env.step(action)
-    
-    env.close()
-    print("Test complete! The agent should have moved around randomly.")
