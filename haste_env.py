@@ -68,7 +68,7 @@ class HasteEnv(gym.Env):
         
         # Death detection
         self.steps_since_rank_visible = 0
-        self.max_steps_without_rank = 30
+        self.max_steps_without_rank = 90
         
         # Manual pause control
         self.paused = False
