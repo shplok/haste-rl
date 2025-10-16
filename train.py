@@ -49,11 +49,10 @@ print("\n" + "="*50)
 print("TRAINING STARTED")
 print("="*50)
 print("Press 'P' to pause/resume after death")
-print("Models save automatically every 10,000 steps\n")
 
 try:
     model.learn(
-        total_timesteps=1000,  # 1k steps for now as model gets better ill increase
+        total_timesteps=300,
         callback=checkpoint_callback,
         progress_bar=True
     )

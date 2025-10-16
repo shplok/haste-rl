@@ -56,7 +56,7 @@ class HasteEnv(gym.Env):
         
         # Reward tracking
         self.previous_rank = 'E'
-        self.rank_values = {'E': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'S': 5}
+        self.rank_values = {'E': 0, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6}
         self.episode_reward = 0
         
         # Load rank templates
