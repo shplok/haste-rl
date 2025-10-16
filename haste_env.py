@@ -4,13 +4,13 @@ from mss import mss
 from PIL import Image
 import cv2
 from pynput.keyboard import Controller, Key
-import pydirectinput
+import pydirectinput  # Works with hidden cursor games!
 import time
 
 class HasteEnv(gym.Env):
     """Custom Environment for Haste game."""
     
-    def __init__(self, mouse_sensitivity=2000):
+    def __init__(self, mouse_sensitivity=1000):
         super(HasteEnv, self).__init__()
         
         # Define action space with CONTINUOUS mouse control
@@ -36,8 +36,8 @@ class HasteEnv(gym.Env):
         
         # Input controllers
         self.keyboard = Controller()
-
-        # Mouse sensitivity
+        
+        # Mouse sensitivity (adjust based on in-game sensitivity)
         self.mouse_sensitivity = mouse_sensitivity
         
         # Track control states
@@ -74,7 +74,7 @@ class HasteEnv(gym.Env):
         reward = 1.0
         
         self.current_step += 1
-        terminated = False
+        terminated = False  # TODO: Detect game over
         truncated = self.current_step >= self.max_steps
         
         return obs, reward, terminated, truncated, {}
@@ -96,26 +96,24 @@ class HasteEnv(gym.Env):
                 self.keyboard.release(key)
                 self.keys_pressed.discard(key)
         
-        if movement == 1:
+        if movement == 1:  # Forward
             self.keyboard.press('w')
             self.keys_pressed.add('w')
-        elif movement == 2:
+        elif movement == 2:  # Back
             self.keyboard.press('s')
             self.keys_pressed.add('s')
-        elif movement == 3:
+        elif movement == 3:  # Left
             self.keyboard.press('a')
             self.keys_pressed.add('a')
-        elif movement == 4:
+        elif movement == 4:  # Right
             self.keyboard.press('d')
             self.keys_pressed.add('d')
         
-        # 2. Handle mouse with PyAutoGUI's moveRel (relative movement)
-        # This works better with games that capture the cursor
+        # 2. Handle mouse with pydirectinput (works with hidden cursor!)
         mouse_dx = int(mouse_x * self.mouse_sensitivity)
         mouse_dy = int(mouse_y * self.mouse_sensitivity)
         
         if mouse_dx != 0 or mouse_dy != 0:
-            # Use relative movement with duration for smoothness
             pydirectinput.moveRel(mouse_dx, mouse_dy, relative=True)
     
     def _release_all_keys(self):
@@ -134,20 +132,19 @@ if __name__ == "__main__":
     print("Starting test in 5 seconds - click in Haste window!")
     time.sleep(5)
     
-    env = HasteEnv(mouse_sensitivity=1000)
+    env = HasteEnv(mouse_sensitivity=500)
     obs, info = env.reset()
     
-    print("Looking right...")
-    for _ in range(10):
-        action = {'movement': 1, 'mouse_x': np.array([1.0]), 'mouse_y': np.array([0.0])}
-        obs, reward, terminated, truncated, info = env.step(action)
-    
-    time.sleep(1)
-    
-    print("Looking left...")
-    for _ in range(10):
-        action = {'movement': 1, 'mouse_x': np.array([-1.0]), 'mouse_y': np.array([0.0])}
+    print("Moving forward and looking around...")
+    for _ in range(30):
+        # Random actions
+        import random
+        movement = random.choice([0, 1, 3, 4])  # No backward
+        mouse_x = np.array([random.uniform(-0.5, 0.5)])
+        mouse_y = np.array([random.uniform(-0.3, 0.3)])
+        
+        action = {'movement': movement, 'mouse_x': mouse_x, 'mouse_y': mouse_y}
         obs, reward, terminated, truncated, info = env.step(action)
     
     env.close()
-    print("Test complete!")
+    print("Test complete! The agent should have moved around randomly.")
