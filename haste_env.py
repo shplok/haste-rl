@@ -38,20 +38,21 @@ class HasteEnv(gym.Env):
             "height": 1075
         }
         
-        # Regions for OCR (relative to monitor)
-        # You'll need to adjust these based on where speed/rank appear
+        # UI Regions (based on grid - top-left is 0-100, next down is 100-200)
+        # Speed: top half of first grid square (0-50 vertical)
         self.speed_region = {
-            "top": self.monitor["top"] + 20,
-            "left": self.monitor["left"] + 20,
-            "width": 150,
-            "height": 60
+            "top": self.monitor["top"] + 0,      # Top of first grid
+            "left": self.monitor["left"] + 0,    # Left edge
+            "width": 100,                        # One grid square wide
+            "height": 50                         # Top half of grid square
         }
         
+        # Rank: second grid square down (100-200 vertical)
         self.rank_region = {
-            "top": self.monitor["top"] + 80,
-            "left": self.monitor["left"] + 20,
-            "width": 100,
-            "height": 50
+            "top": self.monitor["top"] + 100,    # Second grid square
+            "left": self.monitor["left"] + 0,    # Left edge
+            "width": 100,                        # One grid square wide
+            "height": 100                        # Full grid square height
         }
         
         # Input controllers
@@ -123,10 +124,15 @@ class HasteEnv(gym.Env):
             
             # Preprocess for better OCR
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
             
-            # OCR
-            text = pytesseract.image_to_string(img, config='--psm 7 digits')
+            # Try different thresholds
+            _, img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
+            
+            # Save debug image (comment out after testing)
+            cv2.imwrite("debug_speed.png", img)
+            
+            # OCR with config for single line of digits
+            text = pytesseract.image_to_string(img, config='--psm 7 -c tessedit_char_whitelist=0123456789')
             
             # Extract number
             numbers = re.findall(r'\d+', text)
@@ -135,7 +141,7 @@ class HasteEnv(gym.Env):
                 return min(speed, 200)  # Cap at 200
             
         except Exception as e:
-            pass
+            print(f"Speed OCR error: {e}")
         
         return self.previous_speed  # Return previous if OCR fails
     
@@ -148,10 +154,13 @@ class HasteEnv(gym.Env):
             
             # Preprocess
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            _, img = cv2.threshold(img, 150, 255, cv2.THRESH_BINARY)
+            _, img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
             
-            # OCR
-            text = pytesseract.image_to_string(img, config='--psm 10').strip().upper()
+            # Save debug image (comment out after testing)
+            cv2.imwrite("debug_rank.png", img)
+            
+            # OCR with config for single character
+            text = pytesseract.image_to_string(img, config='--psm 10 -c tessedit_char_whitelist=EDCBAS').strip().upper()
             
             # Extract rank letter
             for char in text:
@@ -159,7 +168,7 @@ class HasteEnv(gym.Env):
                     return char
             
         except Exception as e:
-            pass
+            print(f"Rank OCR error: {e}")
         
         return self.previous_rank  # Return previous if OCR fails
     
@@ -198,7 +207,6 @@ class HasteEnv(gym.Env):
     def _is_game_over(self):
         """Detect if game is over (TODO: implement detection)."""
         # TODO: Add detection for falling off map, level complete, etc.
-        # Could use OCR to detect "Game Over" text or screen color changes
         return False
     
     def _take_action(self, movement, mouse_x, mouse_y):
