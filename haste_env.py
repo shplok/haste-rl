@@ -140,6 +140,7 @@ class HasteEnv(gym.Env):
         # Check lives periodically
         if self.current_step % self.check_lives_every == 0:
             self.current_lives = self._read_lives()
+            print(f"Current lives: {self.current_lives}")
             
             # Trigger restart if down to 1 life
             if self.current_lives == 1:
