@@ -8,8 +8,10 @@ import pydirectinput
 import pytesseract
 import time
 import re
+import os
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"
+# Set tesseract path
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
 class HasteEnv(gym.Env):
     """Custom Environment for Haste game."""
@@ -38,21 +40,19 @@ class HasteEnv(gym.Env):
             "height": 1075
         }
         
-        # UI Regions (based on grid - top-left is 0-100, next down is 100-200)
-        # Speed: top half of first grid square (0-50 vertical)
+        # UI Regions
         self.speed_region = {
-            "top": self.monitor["top"] + 0,      # Top of first grid
-            "left": self.monitor["left"] + 0,    # Left edge
-            "width": 100,                        # One grid square wide
-            "height": 50                         # Top half of grid square
+            "top": self.monitor["top"] + 0,
+            "left": self.monitor["left"] + 0,
+            "width": 100,
+            "height": 50
         }
         
-        # Rank: second grid square down (100-200 vertical)
         self.rank_region = {
-            "top": self.monitor["top"] + 100,    # Second grid square
-            "left": self.monitor["left"] + 0,    # Left edge
-            "width": 100,                        # One grid square wide
-            "height": 100                        # Full grid square height
+            "top": self.monitor["top"] + 100,
+            "left": self.monitor["left"] + 0,
+            "width": 100,
+            "height": 100
         }
         
         # Input controllers
@@ -67,6 +67,19 @@ class HasteEnv(gym.Env):
         self.previous_rank = 'E'
         self.rank_values = {'E': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'S': 5}
         
+        # Load rank templates (minimal preprocessing)
+        self.rank_templates = {}
+        if os.path.exists('templates'):
+            for rank in ['E', 'D', 'C', 'B', 'A', 'S']:
+                template_path = f"templates/rank_{rank}.png"
+                if os.path.exists(template_path):
+                    # Load as grayscale
+                    self.rank_templates[rank] = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
+                    print(f"✓ Loaded template for rank {rank}")
+        
+        if not self.rank_templates:
+            print("⚠ No rank templates found! Run capture_rank_templates.py first")
+        
         # State
         self.current_step = 0
         self.max_steps = 1000
@@ -78,9 +91,7 @@ class HasteEnv(gym.Env):
         self.previous_speed = 0
         self.previous_rank = 'E'
         
-        # Release all keys
         self._release_all_keys()
-        
         time.sleep(1)
         
         obs = self._get_observation()
@@ -93,12 +104,9 @@ class HasteEnv(gym.Env):
         mouse_y = float(action['mouse_y'][0])
         
         self._take_action(movement, mouse_x, mouse_y)
-        
         time.sleep(0.05)
         
         obs = self._get_observation()
-        
-        # Calculate reward based on speed and rank
         reward = self._calculate_reward()
         
         self.current_step += 1
@@ -118,72 +126,81 @@ class HasteEnv(gym.Env):
     def _read_speed(self):
         """Read speed value from screen using OCR."""
         try:
-            # Capture speed region
             screenshot = self.sct.grab(self.speed_region)
             img = np.array(screenshot)
-            
-            # Preprocess for better OCR
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            
-            # Try different thresholds
             _, img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
             
-            # Save debug image (comment out after testing)
-            cv2.imwrite("debug_speed.png", img)
-            
-            # OCR with config for single line of digits
             text = pytesseract.image_to_string(img, config='--psm 7 -c tessedit_char_whitelist=0123456789')
-            
-            # Extract number
             numbers = re.findall(r'\d+', text)
             if numbers:
                 speed = int(numbers[0])
-                return min(speed, 200)  # Cap at 200
-            
+                return min(speed, 200)
         except Exception as e:
-            print(f"Speed OCR error: {e}")
+            pass
         
-        return self.previous_speed  # Return previous if OCR fails
+        return self.previous_speed
     
     def _read_rank(self):
-        """Read rank from screen using OCR."""
+        """Read rank using template matching with white letter extraction."""
+        if not self.rank_templates:
+            return self.previous_rank
+        
         try:
             # Capture rank region
             screenshot = self.sct.grab(self.rank_region)
             img = np.array(screenshot)
+            img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             
-            # Preprocess
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            _, img = cv2.threshold(img, 127, 255, cv2.THRESH_BINARY)
+            # Extract ONLY bright white pixels (the letter)
+            _, mask = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
             
-            # Save debug image (comment out after testing)
-            cv2.imwrite("debug_rank.png", img)
+            # Clean up with morphological operations
+            kernel = np.ones((2,2), np.uint8)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
             
-            # OCR with config for single character
-            text = pytesseract.image_to_string(img, config='--psm 10 -c tessedit_char_whitelist=EDCBAS').strip().upper()
+            # Create white letter on black background
+            processed = np.zeros_like(img_gray)
+            processed[mask == 255] = 255
             
-            # Extract rank letter
-            for char in text:
-                if char in self.rank_values:
-                    return char
+            # Save debug image
+            cv2.imwrite("debug_rank_processed.png", processed)
             
+            # Match against each template
+            best_match_score = -1
+            best_rank = self.previous_rank
+            
+            for rank, template in self.rank_templates.items():
+                # Use normalized cross-correlation
+                result = cv2.matchTemplate(processed, template, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                
+                if max_val > best_match_score:
+                    best_match_score = max_val
+                    best_rank = rank
+            
+            # Accept if confidence is high enough
+            if best_match_score > 0.7:  # Higher threshold now that we have clean letters
+                return best_rank
+                
         except Exception as e:
-            print(f"Rank OCR error: {e}")
+            pass
         
-        return self.previous_rank  # Return previous if OCR fails
+        return self.previous_rank
+        
+        return self.previous_rank
     
     def _calculate_reward(self):
         """Calculate reward based on speed and rank."""
-        # Read current values
         current_speed = self._read_speed()
         current_rank = self._read_rank()
         
-        # Base reward: small positive for survival
         reward = 0.01
         
-        # Speed reward (normalized to 0-1, where 200 speed = max)
+        # Speed reward
         speed_reward = current_speed / 200.0
-        reward += speed_reward * 0.5  # Speed contributes up to 0.5 reward
+        reward += speed_reward * 0.5
         
         # Speed improvement bonus
         if current_speed > self.previous_speed:
@@ -191,28 +208,24 @@ class HasteEnv(gym.Env):
         
         # Rank reward
         rank_value = self.rank_values.get(current_rank, 0)
-        reward += rank_value * 0.1  # Each rank tier adds 0.1
+        reward += rank_value * 0.1
         
         # Rank improvement bonus
         prev_rank_value = self.rank_values.get(self.previous_rank, 0)
         if rank_value > prev_rank_value:
-            reward += 1.0  # Big bonus for improving rank!
+            reward += 1.0
         
-        # Update previous values
         self.previous_speed = current_speed
         self.previous_rank = current_rank
         
         return reward
     
     def _is_game_over(self):
-        """Detect if game is over (TODO: implement detection)."""
-        # TODO: Add detection for falling off map, level complete, etc.
+        """Detect if game is over."""
         return False
     
     def _take_action(self, movement, mouse_x, mouse_y):
         """Execute game controls."""
-        
-        # Handle movement (WASD)
         for key in ['w', 'a', 's', 'd']:
             if key in self.keys_pressed:
                 self.keyboard.release(key)
@@ -231,7 +244,6 @@ class HasteEnv(gym.Env):
             self.keyboard.press('d')
             self.keys_pressed.add('d')
         
-        # Handle mouse
         mouse_dx = int(mouse_x * self.mouse_sensitivity)
         mouse_dy = int(mouse_y * self.mouse_sensitivity)
         
