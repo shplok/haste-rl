@@ -57,6 +57,7 @@ class HasteEnv(gym.Env):
         # Reward tracking
         self.previous_rank = 'E'
         self.rank_values = {'E': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'S': 5}
+        self.episode_reward = 0
         
         # Load rank templates
         self.rank_templates = {}
@@ -68,7 +69,7 @@ class HasteEnv(gym.Env):
         
         # Death detection
         self.steps_since_rank_visible = 0
-        self.max_steps_without_rank = 90
+        self.max_steps_without_rank = 150
         
         # Manual pause control
         self.paused = False
@@ -88,14 +89,12 @@ class HasteEnv(gym.Env):
         try:
             if key.char == 'p' or key.char == 'P':
                 if self.paused:
-                    # Resume
                     self.paused = False
                     self.restart_requested = True
-                    print("\n  ▶ RESUMED - Starting new episode")
+                    print("resumed")
                 else:
-                    # Pause
                     self.paused = True
-                    print("\n  ⏸ PAUSED - Press 'P' again after manually restarting level")
+                    print("paused - press p after restarting level")
         except AttributeError:
             pass
     
@@ -107,12 +106,9 @@ class HasteEnv(gym.Env):
         self.steps_since_rank_visible = 0
         self.total_episodes += 1
         self.restart_requested = False
+        self.episode_reward = 0
         
         self._release_all_keys()
-        
-        print(f"\n{'='*50}")
-        print(f"Episode {self.total_episodes} - Ready")
-        print('='*50)
         
         time.sleep(1)
         
@@ -124,14 +120,13 @@ class HasteEnv(gym.Env):
         # Check if paused
         while self.paused:
             time.sleep(0.1)
-            # When unpaused, trigger a reset
             if self.restart_requested:
                 return self._get_observation(), 0, True, False, {'needs_reset': True}
         
         # Parse flattened action
-        movement = int(action[0])  # Discretize to 0-4
-        mouse_x = float(action[1])  # -1.0 to 1.0
-        mouse_y = float(action[2])  # -1.0 to 1.0
+        movement = int(action[0])
+        mouse_x = float(action[1])
+        mouse_y = float(action[2])
         
         self._take_action(movement, mouse_x, mouse_y)
         time.sleep(0.05)
@@ -140,8 +135,15 @@ class HasteEnv(gym.Env):
         reward = self._calculate_reward()
         
         self.current_step += 1
+        self.episode_reward += reward
+        
         terminated = self._is_game_over()
         truncated = self.current_step >= self.max_steps
+        
+        # death penalty
+        if terminated:
+            death_penalty = -10.0 - (self.episode_reward * 0.5)
+            reward += death_penalty
         
         return obs, reward, terminated, truncated, {}
     
@@ -219,7 +221,7 @@ class HasteEnv(gym.Env):
     def _is_game_over(self):
         """Detect if dead or level complete."""
         if self.steps_since_rank_visible >= self.max_steps_without_rank:
-            print(f"\n  💀 Game over detected - Press 'P' after manually restarting level")
+            print("game over - press p after restarting")
             self.paused = True
             return True
         return False
