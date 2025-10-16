@@ -49,12 +49,13 @@ class HasteEnv(gym.Env):
         }
         
         # Lives region (bottom center)
-        self.lives_region = {
-            "top": self.monitor["top"] + 900,
-            "left": self.monitor["left"] + 800,
-            "width": 300,
-            "height": 80
+        lives_region = {
+            "top": self.monitor["top"] + self.monitor["height"] - 245,  
+            "left": self.monitor["left"] + (self.monitor["width"] // 2) - 55,  # Center, 400px wide
+            "width": 100,
+            "height": 20
         }
+
         
         # Restart button positions
         self.abandon_button = (630, 1099)
