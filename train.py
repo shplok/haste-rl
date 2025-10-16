@@ -40,9 +40,9 @@ checkpoint_callback = CheckpointCallback(
     save_vecnormalize=False,
 )
 
-print("\nStarting training in 10 seconds...")
+print("\nStarting training in 7 seconds...")
 print("Make sure Haste is running and you're in a level!")
-time.sleep(10)
+time.sleep(7)
 
 # Train
 print("\n" + "="*50)
@@ -53,7 +53,7 @@ print("Models save automatically every 10,000 steps\n")
 
 try:
     model.learn(
-        total_timesteps=1000000,  # 1 million steps
+        total_timesteps=1000,  # 1k steps for now as model gets better ill increase
         callback=checkpoint_callback,
         progress_bar=True
     )
