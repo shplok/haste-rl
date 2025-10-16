@@ -36,11 +36,7 @@ class HasteEnv(gym.Env):
         
         # Input controllers
         self.keyboard = Controller()
-        
-        # PyAutoGUI settings for better game compatibility
-        pyautogui.PAUSE = 0  # No pause between commands
-        pyautogui.FAILSAFE = False  # Disable failsafe
-        
+
         # Mouse sensitivity
         self.mouse_sensitivity = mouse_sensitivity
         
