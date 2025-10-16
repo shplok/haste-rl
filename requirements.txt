@@ -1,0 +1,8 @@
+gymnasium
+stable-baselines3[extra]
+mss
+pillow
+pynput
+opencv-python
+torch
+numpy
