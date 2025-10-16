@@ -39,15 +39,7 @@ class HasteEnv(gym.Env):
             "width": 1913,
             "height": 1075
         }
-        
-        # UI Regions
-        self.speed_region = {
-            "top": self.monitor["top"] + 0,
-            "left": self.monitor["left"] + 0,
-            "width": 100,
-            "height": 50
-        }
-        
+                
         self.rank_region = {
             "top": self.monitor["top"] + 100,
             "left": self.monitor["left"] + 0,
@@ -62,8 +54,7 @@ class HasteEnv(gym.Env):
         # Track control states
         self.keys_pressed = set()
         
-        # Reward tracking
-        self.previous_speed = 0
+
         self.previous_rank = 'E'
         self.rank_values = {'E': 0, 'D': 1, 'C': 2, 'B': 3, 'A': 4, 'S': 5}
         
@@ -75,10 +66,10 @@ class HasteEnv(gym.Env):
                 if os.path.exists(template_path):
                     # Load as grayscale
                     self.rank_templates[rank] = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
-                    print(f"✓ Loaded template for rank {rank}")
+                    print(f"Loaded template for rank {rank}")
         
         if not self.rank_templates:
-            print("⚠ No rank templates found! Run capture_rank_templates.py first")
+            print("no templates found")
         
         # State
         self.current_step = 0
@@ -88,8 +79,7 @@ class HasteEnv(gym.Env):
         """Reset the environment."""
         super().reset(seed=seed)
         self.current_step = 0
-        self.previous_speed = 0
-        self.previous_rank = 'E'
+        self.previous_rank = 'E'  # Remove previous_speed
         
         self._release_all_keys()
         time.sleep(1)
@@ -192,30 +182,26 @@ class HasteEnv(gym.Env):
         return self.previous_rank
     
     def _calculate_reward(self):
-        """Calculate reward based on speed and rank."""
-        current_speed = self._read_speed()
+        """Calculate reward based on rank only."""
         current_rank = self._read_rank()
         
+        # Base reward: small positive for survival
         reward = 0.01
         
-        # Speed reward
-        speed_reward = current_speed / 200.0
-        reward += speed_reward * 0.5
-        
-        # Speed improvement bonus
-        if current_speed > self.previous_speed:
-            reward += 0.1
-        
-        # Rank reward
+        # Rank reward - higher ranks give more reward
         rank_value = self.rank_values.get(current_rank, 0)
-        reward += rank_value * 0.1
+        # E=0, D=1, C=2, B=3, A=4, S=5
+        # Scale so S rank gives substantial reward
+        reward += rank_value * 0.2  # Each rank tier adds 0.2 (S = +1.0)
         
-        # Rank improvement bonus
+        # BIG bonus for rank improvement
         prev_rank_value = self.rank_values.get(self.previous_rank, 0)
         if rank_value > prev_rank_value:
-            reward += 1.0
+            reward += 2.0  # Huge reward for ranking up!
+        elif rank_value < prev_rank_value:
+            reward -= 0.5  # Penalty for dropping rank
         
-        self.previous_speed = current_speed
+        # Update previous rank
         self.previous_rank = current_rank
         
         return reward

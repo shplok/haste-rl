@@ -31,7 +31,7 @@ ranks = ['E', 'D', 'C', 'B', 'A', 'S']
 with mss() as sct:
     for rank in ranks:
         input(f"Get rank {rank} showing, then press Enter...")
-        
+        time.sleep(1)  # Wait a moment to ensure stable capture
         # Capture
         screenshot = sct.grab(rank_region)
         img = np.array(screenshot)
