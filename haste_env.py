@@ -4,6 +4,7 @@ from mss import mss
 from PIL import Image
 import cv2
 from pynput.keyboard import Controller, Key
+from pynput.mouse import Controller as MouseController
 import time
 
 class HasteEnv(gym.Env):
@@ -12,11 +13,16 @@ class HasteEnv(gym.Env):
     def __init__(self):
         super(HasteEnv, self).__init__()
         
-        # Define action and observation space
-        # Actions: 0=nothing, 1=forward(W), 2=left(A), 3=right(D), 4=jump(Space)
-        self.action_space = gym.spaces.Discrete(5)
+        # Define action space (SIMPLIFIED - no sprint)
+        # [movement, jump, mouse_x, mouse_y]
+        # movement: 0=none, 1=forward, 2=back, 3=left, 4=right
+        # jump: 0=none, 1=tap/hold space (fast fall)
+        # mouse_x: -2 to 2 (left to right, discrete steps)
+        # mouse_y: -2 to 2 (up to down, discrete steps)
         
-        # Observations: 84x84 grayscale image
+        self.action_space = gym.spaces.MultiDiscrete([5, 2, 5, 5])
+        
+        # Observations: 128x128 grayscale image
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(128, 128), dtype=np.uint8
         )
@@ -30,8 +36,12 @@ class HasteEnv(gym.Env):
             "height": 1075
         }
         
-        # Input controller
+        # Input controllers
         self.keyboard = Controller()
+        self.mouse = MouseController()
+        
+        # Track control states
+        self.keys_pressed = set()
         
         # State
         self.current_step = 0
@@ -42,6 +52,9 @@ class HasteEnv(gym.Env):
         super().reset(seed=seed)
         self.current_step = 0
         
+        # Release all keys
+        self._release_all_keys()
+        
         # TODO: Add logic to restart the game
         time.sleep(1)  # Wait for game to reset
         
@@ -50,8 +63,11 @@ class HasteEnv(gym.Env):
     
     def step(self, action):
         """Execute one step."""
-        # Take action
-        self._take_action(action)
+        # Parse action (no sprint anymore!)
+        movement, jump, mouse_x, mouse_y = action
+        
+        # Execute action
+        self._take_action(movement, jump, mouse_x, mouse_y)
         
         # Small delay to let game update
         time.sleep(0.05)
@@ -78,50 +94,87 @@ class HasteEnv(gym.Env):
         # Convert to grayscale
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
         
-        # Resize to 84x84
-        img = cv2.resize(img, (84, 84))
+        # Resize to 128x128
+        img = cv2.resize(img, (128, 128))
         
         return img
     
-    def _take_action(self, action):
-        """Execute keyboard action."""
-        # Release all keys first
-        # (In real implementation, track which keys are pressed)
+    def _take_action(self, movement, jump, mouse_x, mouse_y):
+        """Execute game controls."""
         
-        if action == 1:  # Forward
+        # 1. Handle movement (WASD)
+        # Game auto-sprints, so A/D will auto-strafe when moving
+        # First release previous movement keys
+        for key in ['w', 'a', 's', 'd']:
+            if key in self.keys_pressed:
+                self.keyboard.release(key)
+                self.keys_pressed.discard(key)
+        
+        # Press new movement key
+        if movement == 1:  # Forward
             self.keyboard.press('w')
-            time.sleep(0.1)
-            self.keyboard.release('w')
-        elif action == 2:  # Left
+            self.keys_pressed.add('w')
+        elif movement == 2:  # Back
+            self.keyboard.press('s')
+            self.keys_pressed.add('s')
+        elif movement == 3:  # Left (will strafe when auto-sprinting)
             self.keyboard.press('a')
-            time.sleep(0.1)
-            self.keyboard.release('a')
-        elif action == 3:  # Right
+            self.keys_pressed.add('a')
+        elif movement == 4:  # Right (will strafe when auto-sprinting)
             self.keyboard.press('d')
-            time.sleep(0.1)
-            self.keyboard.release('d')
-        elif action == 4:  # Jump
+            self.keys_pressed.add('d')
+        # movement == 0: no movement
+        
+        # 2. Handle jump/fast fall (Space)
+        if jump == 1:
             self.keyboard.press(Key.space)
-            time.sleep(0.1)
+            time.sleep(0.05)  # Brief hold
             self.keyboard.release(Key.space)
-        # action == 0: do nothing
+        
+        # 3. Handle mouse movement (look around)
+        # Convert discrete action to pixel movement
+        mouse_dx = (mouse_x - 2) * 50  # Scale factor for sensitivity
+        mouse_dy = (mouse_y - 2) * 50
+        
+        if mouse_dx != 0 or mouse_dy != 0:
+            self.mouse.move(mouse_dx, mouse_dy)
+    
+    def _release_all_keys(self):
+        """Release all pressed keys."""
+        for key in list(self.keys_pressed):
+            if key in ['w', 'a', 's', 'd']:
+                self.keyboard.release(key)
+        
+        self.keys_pressed.clear()
     
     def close(self):
         """Cleanup."""
-        pass
+        self._release_all_keys()
 
 # Quick test
 if __name__ == "__main__":
     env = HasteEnv()
     obs, info = env.reset()
     print(f"Observation shape: {obs.shape}")
+    print(f"Action space: {env.action_space}")
     
-    for _ in range(10):
-        action = env.action_space.sample()
-        obs, reward, terminated, truncated, info = env.step(action)
-        print(f"Action: {action}, Reward: {reward}")
-        
-        if terminated or truncated:
-            break
+    # Test some actions
+    print("\nTesting controls...")
+    
+    # Move forward (auto-sprint)
+    print("Forward")
+    obs, reward, terminated, truncated, info = env.step([1, 0, 2, 2])  # forward, no jump, center mouse
+    time.sleep(1)
+    
+    # Strafe left (auto-sprint makes this strafe)
+    print("Strafe left")
+    obs, reward, terminated, truncated, info = env.step([3, 0, 2, 2])  # left, no jump, center mouse
+    time.sleep(1)
+    
+    # Jump
+    print("Jump")
+    obs, reward, terminated, truncated, info = env.step([1, 1, 2, 2])  # forward, jump, center mouse
+    time.sleep(1)
     
     env.close()
+    print("\nTest complete!")
