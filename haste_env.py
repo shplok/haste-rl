@@ -49,7 +49,7 @@ class HasteEnv(gym.Env):
         }
         
         # Lives region (bottom center)
-        lives_region = {
+        self.lives_region = {
             "top": self.monitor["top"] + self.monitor["height"] - 245,  
             "left": self.monitor["left"] + (self.monitor["width"] // 2) - 55,  # Center, 400px wide
             "width": 100,
