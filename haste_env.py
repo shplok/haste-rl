@@ -14,12 +14,16 @@ class HasteEnv(gym.Env):
     def __init__(self, mouse_sensitivity=500):
         super(HasteEnv, self).__init__()
         
-        # Define action space
-        self.action_space = gym.spaces.Dict({
-            'movement': gym.spaces.Discrete(5),
-            'mouse_x': gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32),
-            'mouse_y': gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
-        })
+        # Define action space - FLATTENED for PPO compatibility
+        # Box with 3 values: [movement, mouse_x, mouse_y]
+        # movement: 0-4 (will be discretized in _take_action)
+        # mouse_x: -1.0 to 1.0
+        # mouse_y: -1.0 to 1.0
+        self.action_space = gym.spaces.Box(
+            low=np.array([0, -1.0, -1.0]),
+            high=np.array([4, 1.0, 1.0]),
+            dtype=np.float32
+        )
         
         # Observations: 128x128 grayscale image
         self.observation_space = gym.spaces.Box(
@@ -124,9 +128,10 @@ class HasteEnv(gym.Env):
             if self.restart_requested:
                 return self._get_observation(), 0, True, False, {'needs_reset': True}
         
-        movement = action['movement']
-        mouse_x = float(action['mouse_x'][0])
-        mouse_y = float(action['mouse_y'][0])
+        # Parse flattened action
+        movement = int(action[0])  # Discretize to 0-4
+        mouse_x = float(action[1])  # -1.0 to 1.0
+        mouse_y = float(action[2])  # -1.0 to 1.0
         
         self._take_action(movement, mouse_x, mouse_y)
         time.sleep(0.05)
