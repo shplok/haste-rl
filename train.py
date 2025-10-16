@@ -41,19 +41,16 @@ print("Press 'P' to pause/resume after death")
 
 try:
     model.learn(
-        total_timesteps=300,
+        total_timesteps=1000000,
         callback=checkpoint_callback,
         progress_bar=True
     )
     
     # Save final model
     model.save("models/haste_ppo_final")
-    print("\n✓ Training complete! Final model saved to models/haste_ppo_final.zip")
-    
+
 except KeyboardInterrupt:
-    print("\n\n⏹ Training interrupted! Saving model...")
     model.save("models/haste_ppo_interrupted")
-    print("✓ Model saved to models/haste_ppo_interrupted.zip")
 finally:
     env.close()
 
