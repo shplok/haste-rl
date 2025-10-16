@@ -13,21 +13,20 @@ class HasteEnv(gym.Env):
     def __init__(self):
         super(HasteEnv, self).__init__()
         
-        # Define action space (SIMPLIFIED - no sprint)
-        # [movement, jump, mouse_x, mouse_y]
+        # Define action space (FURTHER SIMPLIFIED - no jump, better mouse)
+        # [movement, mouse_x, mouse_y]
         # movement: 0=none, 1=forward, 2=back, 3=left, 4=right
-        # jump: 0=none, 1=tap/hold space (fast fall)
         # mouse_x: -2 to 2 (left to right, discrete steps)
         # mouse_y: -2 to 2 (up to down, discrete steps)
         
-        self.action_space = gym.spaces.MultiDiscrete([5, 2, 5, 5])
+        self.action_space = gym.spaces.MultiDiscrete([5, 5, 5])
         
         # Observations: 128x128 grayscale image
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(128, 128), dtype=np.uint8
         )
         
-        # Screen capture setup
+        # Screen capture setup - YOUR DIMENSIONS
         self.sct = mss()
         self.monitor = {
             "top": 189,
@@ -63,11 +62,11 @@ class HasteEnv(gym.Env):
     
     def step(self, action):
         """Execute one step."""
-        # Parse action (no sprint anymore!)
-        movement, jump, mouse_x, mouse_y = action
+        # Parse action (no jump!)
+        movement, mouse_x, mouse_y = action
         
         # Execute action
-        self._take_action(movement, jump, mouse_x, mouse_y)
+        self._take_action(movement, mouse_x, mouse_y)
         
         # Small delay to let game update
         time.sleep(0.05)
@@ -99,11 +98,10 @@ class HasteEnv(gym.Env):
         
         return img
     
-    def _take_action(self, movement, jump, mouse_x, mouse_y):
+    def _take_action(self, movement, mouse_x, mouse_y):
         """Execute game controls."""
         
         # 1. Handle movement (WASD)
-        # Game auto-sprints, so A/D will auto-strafe when moving
         # First release previous movement keys
         for key in ['w', 'a', 's', 'd']:
             if key in self.keys_pressed:
@@ -117,24 +115,19 @@ class HasteEnv(gym.Env):
         elif movement == 2:  # Back
             self.keyboard.press('s')
             self.keys_pressed.add('s')
-        elif movement == 3:  # Left (will strafe when auto-sprinting)
+        elif movement == 3:  # Left (strafe when auto-sprinting)
             self.keyboard.press('a')
             self.keys_pressed.add('a')
-        elif movement == 4:  # Right (will strafe when auto-sprinting)
+        elif movement == 4:  # Right (strafe when auto-sprinting)
             self.keyboard.press('d')
             self.keys_pressed.add('d')
         # movement == 0: no movement
         
-        # 2. Handle jump/fast fall (Space)
-        if jump == 1:
-            self.keyboard.press(Key.space)
-            time.sleep(0.05)  # Brief hold
-            self.keyboard.release(Key.space)
-        
-        # 3. Handle mouse movement (look around)
+        # 2. Handle mouse movement (IMPROVED)
         # Convert discrete action to pixel movement
-        mouse_dx = (mouse_x - 2) * 50  # Scale factor for sensitivity
-        mouse_dy = (mouse_y - 2) * 50
+        # Increased sensitivity and made it more responsive
+        mouse_dx = (mouse_x - 2) * 100  # Doubled from 50 to 100
+        mouse_dy = (mouse_y - 2) * 100
         
         if mouse_dx != 0 or mouse_dy != 0:
             self.mouse.move(mouse_dx, mouse_dy)
@@ -161,19 +154,24 @@ if __name__ == "__main__":
     # Test some actions
     print("\nTesting controls...")
     
-    # Move forward (auto-sprint)
+    # Move forward
     print("Forward")
-    obs, reward, terminated, truncated, info = env.step([1, 0, 2, 2])  # forward, no jump, center mouse
+    obs, reward, terminated, truncated, info = env.step([1, 2, 2])  # forward, center mouse
     time.sleep(1)
     
-    # Strafe left (auto-sprint makes this strafe)
+    # Strafe left
     print("Strafe left")
-    obs, reward, terminated, truncated, info = env.step([3, 0, 2, 2])  # left, no jump, center mouse
+    obs, reward, terminated, truncated, info = env.step([3, 2, 2])  # left, center mouse
     time.sleep(1)
     
-    # Jump
-    print("Jump")
-    obs, reward, terminated, truncated, info = env.step([1, 1, 2, 2])  # forward, jump, center mouse
+    # Look right
+    print("Look right")
+    obs, reward, terminated, truncated, info = env.step([1, 4, 2])  # forward, look right
+    time.sleep(1)
+    
+    # Look left
+    print("Look left")
+    obs, reward, terminated, truncated, info = env.step([1, 0, 2])  # forward, look left
     time.sleep(1)
     
     env.close()
