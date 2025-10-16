@@ -4,7 +4,7 @@ from mss import mss
 from PIL import Image
 import cv2
 from pynput.keyboard import Controller, Key
-import pyautogui
+import pydirectinput
 import time
 
 class HasteEnv(gym.Env):
@@ -120,7 +120,7 @@ class HasteEnv(gym.Env):
         
         if mouse_dx != 0 or mouse_dy != 0:
             # Use relative movement with duration for smoothness
-            pyautogui.moveRel(mouse_dx, mouse_dy, duration=0.05)
+            pydirectinput.moveRel(mouse_dx, mouse_dy, relative=True)
     
     def _release_all_keys(self):
         """Release all pressed keys."""
