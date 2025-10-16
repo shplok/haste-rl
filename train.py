@@ -3,17 +3,6 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from haste_env import HasteEnv
 import time
 
-print("="*50)
-print("Training Haste RL Agent")
-print("="*50)
-print("\n📋 Instructions:")
-print("  - When agent dies, training will PAUSE")
-print("  - Manually restart the level in game")
-print("  - Press 'P' to RESUME training")
-print("  - Press Ctrl+C to stop and save")
-print("  - Models auto-save every 10,000 steps\n")
-
-# Create environment
 print("Creating environment...")
 env = HasteEnv(mouse_sensitivity=500)
 
