@@ -13,20 +13,24 @@ class HasteEnv(gym.Env):
     def __init__(self):
         super(HasteEnv, self).__init__()
         
-        # Define action space (FURTHER SIMPLIFIED - no jump, better mouse)
-        # [movement, mouse_x, mouse_y]
-        # movement: 0=none, 1=forward, 2=back, 3=left, 4=right
-        # mouse_x: -2 to 2 (left to right, discrete steps)
-        # mouse_y: -2 to 2 (up to down, discrete steps)
+        # Define action space with CONTINUOUS mouse control
+        # This is a Dict space with:
+        # - movement: discrete (0-4)
+        # - mouse_x: continuous (-1.0 to 1.0)
+        # - mouse_y: continuous (-1.0 to 1.0)
         
-        self.action_space = gym.spaces.MultiDiscrete([5, 5, 5])
+        self.action_space = gym.spaces.Dict({
+            'movement': gym.spaces.Discrete(5),
+            'mouse_x': gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32),
+            'mouse_y': gym.spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+        })
         
         # Observations: 128x128 grayscale image
         self.observation_space = gym.spaces.Box(
             low=0, high=255, shape=(128, 128), dtype=np.uint8
         )
         
-        # Screen capture setup - YOUR DIMENSIONS
+        # Screen capture setup
         self.sct = mss()
         self.monitor = {
             "top": 189,
@@ -38,6 +42,9 @@ class HasteEnv(gym.Env):
         # Input controllers
         self.keyboard = Controller()
         self.mouse = MouseController()
+        
+        # Mouse sensitivity (adjust if needed)
+        self.mouse_sensitivity = 300  # Pixels per action
         
         # Track control states
         self.keys_pressed = set()
@@ -62,8 +69,10 @@ class HasteEnv(gym.Env):
     
     def step(self, action):
         """Execute one step."""
-        # Parse action (no jump!)
-        movement, mouse_x, mouse_y = action
+        # Parse action
+        movement = action['movement']
+        mouse_x = float(action['mouse_x'][0])
+        mouse_y = float(action['mouse_y'][0])
         
         # Execute action
         self._take_action(movement, mouse_x, mouse_y)
@@ -123,11 +132,11 @@ class HasteEnv(gym.Env):
             self.keys_pressed.add('d')
         # movement == 0: no movement
         
-        # 2. Handle mouse movement (IMPROVED)
-        # Convert discrete action to pixel movement
-        # Increased sensitivity and made it more responsive
-        mouse_dx = (mouse_x - 2) * 100  # Doubled from 50 to 100
-        mouse_dy = (mouse_y - 2) * 100
+        # 2. Handle CONTINUOUS mouse movement
+        # mouse_x and mouse_y are now in range [-1.0, 1.0]
+        # Convert to pixel movement
+        mouse_dx = int(mouse_x * self.mouse_sensitivity)
+        mouse_dy = int(mouse_y * self.mouse_sensitivity)
         
         if mouse_dx != 0 or mouse_dy != 0:
             self.mouse.move(mouse_dx, mouse_dy)
@@ -151,28 +160,32 @@ if __name__ == "__main__":
     print(f"Observation shape: {obs.shape}")
     print(f"Action space: {env.action_space}")
     
-    # Test some actions
+    # Test some actions with continuous mouse
     print("\nTesting controls...")
     
     # Move forward
     print("Forward")
-    obs, reward, terminated, truncated, info = env.step([1, 2, 2])  # forward, center mouse
+    action = {'movement': 1, 'mouse_x': np.array([0.0]), 'mouse_y': np.array([0.0])}
+    obs, reward, terminated, truncated, info = env.step(action)
     time.sleep(1)
     
-    # Strafe left
-    print("Strafe left")
-    obs, reward, terminated, truncated, info = env.step([3, 2, 2])  # left, center mouse
-    time.sleep(1)
+    # Look right (continuous)
+    print("Look right (50%)")
+    action = {'movement': 1, 'mouse_x': np.array([0.5]), 'mouse_y': np.array([0.0])}
+    obs, reward, terminated, truncated, info = env.step(action)
+    time.sleep(0.5)
     
-    # Look right
-    print("Look right")
-    obs, reward, terminated, truncated, info = env.step([1, 4, 2])  # forward, look right
-    time.sleep(1)
+    # Look right more
+    print("Look right (100%)")
+    action = {'movement': 1, 'mouse_x': np.array([1.0]), 'mouse_y': np.array([0.0])}
+    obs, reward, terminated, truncated, info = env.step(action)
+    time.sleep(0.5)
     
     # Look left
     print("Look left")
-    obs, reward, terminated, truncated, info = env.step([1, 0, 2])  # forward, look left
-    time.sleep(1)
+    action = {'movement': 1, 'mouse_x': np.array([-0.8]), 'mouse_y': np.array([0.0])}
+    obs, reward, terminated, truncated, info = env.step(action)
+    time.sleep(0.5)
     
     env.close()
     print("\nTest complete!")
