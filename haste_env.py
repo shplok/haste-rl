@@ -3,8 +3,9 @@ import numpy as np
 from mss import mss
 from PIL import Image
 import cv2
-from pynput.keyboard import Controller, Key, Listener
+from pynput.keyboard import Controller, Key
 import pydirectinput
+import pyautogui
 import time
 import os
 
@@ -47,6 +48,19 @@ class HasteEnv(gym.Env):
             "height": 100
         }
         
+        # Lives region (bottom center)
+        self.lives_region = {
+            "top": self.monitor["top"] + 900,
+            "left": self.monitor["left"] + 800,
+            "width": 300,
+            "height": 80
+        }
+        
+        # Restart button positions
+        self.abandon_button = (630, 1099)
+        self.restart_button = (589, 1074)
+        self.new_seed_button = (1068, 828)
+        
         # Input controllers
         self.keyboard = Controller()
         self.mouse_sensitivity = mouse_sensitivity
@@ -67,37 +81,24 @@ class HasteEnv(gym.Env):
                 if os.path.exists(template_path):
                     self.rank_templates[rank] = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
         
+        # Load lives templates
+        self.lives_templates = {}
+        for lives in [1, 2, 3, 4]:
+            template_path = f"templates/lives_{lives}.png"
+            if os.path.exists(template_path):
+                self.lives_templates[lives] = cv2.imread(template_path, cv2.IMREAD_GRAYSCALE)
+        
         # Death detection
         self.steps_since_rank_visible = 0
         self.max_steps_without_rank = 150
-        
-        # Manual pause control
-        self.paused = False
-        self.restart_requested = False
-        
-        # Start keyboard listener for 'P' key
-        self.listener = Listener(on_press=self._on_key_press)
-        self.listener.start()
+        self.current_lives = 4
+        self.check_lives_every = 50  # Check lives every N steps to save performance
         
         # State
         self.current_step = 0
         self.max_steps = 2000
         self.total_episodes = 0
         
-    def _on_key_press(self, key):
-        """Handle keyboard input for pause/restart."""
-        try:
-            if key.char == 'p' or key.char == 'P':
-                if self.paused:
-                    self.paused = False
-                    self.restart_requested = True
-                    print("resumed")
-                else:
-                    self.paused = True
-                    print("paused - press p after restarting level")
-        except AttributeError:
-            pass
-    
     def reset(self, seed=None, options=None):
         """Reset the environment."""
         super().reset(seed=seed)
@@ -105,10 +106,14 @@ class HasteEnv(gym.Env):
         self.previous_rank = 'E'
         self.steps_since_rank_visible = 0
         self.total_episodes += 1
-        self.restart_requested = False
         self.episode_reward = 0
+        self.current_lives = 4
         
         self._release_all_keys()
+        
+        # Auto-restart if not first episode
+        if self.total_episodes > 1:
+            self._auto_restart()
         
         time.sleep(1)
         
@@ -117,12 +122,6 @@ class HasteEnv(gym.Env):
     
     def step(self, action):
         """Execute one step."""
-        # Check if paused
-        while self.paused:
-            time.sleep(0.1)
-            if self.restart_requested:
-                return self._get_observation(), 0, True, False, {'needs_reset': True}
-        
         # Parse flattened action
         movement = int(action[0])
         mouse_x = float(action[1])
@@ -137,10 +136,27 @@ class HasteEnv(gym.Env):
         self.current_step += 1
         self.episode_reward += reward
         
+        # Check lives periodically
+        if self.current_step % self.check_lives_every == 0:
+            self.current_lives = self._read_lives()
+            
+            # Trigger restart if down to 1 life
+            if self.current_lives == 1:
+                print("down to 1 life - restarting")
+                terminated = True
+                truncated = False
+                
+                # Death penalty
+                death_penalty = -10.0 - (self.episode_reward * 0.5)
+                reward += death_penalty
+                
+                return obs, reward, terminated, truncated, {}
+        
+        # Also check for normal game over (fell off map, etc)
         terminated = self._is_game_over()
         truncated = self.current_step >= self.max_steps
         
-        # death penalty
+        # Death penalty
         if terminated:
             death_penalty = -10.0 - (self.episode_reward * 0.5)
             reward += death_penalty
@@ -154,6 +170,82 @@ class HasteEnv(gym.Env):
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
         img = cv2.resize(img, (128, 128))
         return img
+    
+    def _extract_red(self, img):
+        """Extract red pixels from BGR image."""
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        
+        # Red color range
+        lower_red1 = np.array([0, 100, 100])
+        upper_red1 = np.array([10, 255, 255])
+        lower_red2 = np.array([160, 100, 100])
+        upper_red2 = np.array([180, 255, 255])
+        
+        mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
+        mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+        red_mask = mask1 + mask2
+        
+        result = np.zeros(img.shape[:2], dtype=np.uint8)
+        result[red_mask > 0] = 255
+        
+        return result
+    
+    def _read_lives(self):
+        """Read current lives using template matching."""
+        if not self.lives_templates:
+            return 4  # Assume full lives if no templates
+        
+        try:
+            screenshot = self.sct.grab(self.lives_region)
+            img = np.array(screenshot)
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            
+            # Extract red hearts
+            red_only = self._extract_red(img)
+            
+            # Match against templates
+            best_match_score = -1
+            best_lives = 4
+            
+            for lives, template in self.lives_templates.items():
+                result = cv2.matchTemplate(red_only, template, cv2.TM_CCOEFF_NORMED)
+                _, max_val, _, _ = cv2.minMaxLoc(result)
+                
+                if max_val > best_match_score:
+                    best_match_score = max_val
+                    best_lives = lives
+            
+            if best_match_score > 0.6:
+                return best_lives
+                
+        except Exception as e:
+            pass
+        
+        return self.current_lives  # Return previous value if detection fails
+    
+    def _auto_restart(self):
+        """Automatically restart level with new seed."""
+        print("restarting level with new seed")
+        
+        # Press ESC
+        self.keyboard.press(Key.esc)
+        time.sleep(0.1)
+        self.keyboard.release(Key.esc)
+        time.sleep(0.8)
+        
+        # Click abandon shard
+        pyautogui.click(self.abandon_button[0], self.abandon_button[1])
+        time.sleep(0.8)
+        
+        # Click restart
+        pyautogui.click(self.restart_button[0], self.restart_button[1])
+        time.sleep(0.8)
+        
+        # Click new seed
+        pyautogui.click(self.new_seed_button[0], self.new_seed_button[1])
+        time.sleep(2.0)
+        
+        print("level restarted")
     
     def _read_rank(self):
         """Read rank using template matching."""
@@ -221,8 +313,6 @@ class HasteEnv(gym.Env):
     def _is_game_over(self):
         """Detect if dead or level complete."""
         if self.steps_since_rank_visible >= self.max_steps_without_rank:
-            print("game over - press p after restarting")
-            self.paused = True
             return True
         return False
     
@@ -262,4 +352,3 @@ class HasteEnv(gym.Env):
     def close(self):
         """Cleanup."""
         self._release_all_keys()
-        self.listener.stop()
