@@ -93,7 +93,7 @@ class HasteEnv(gym.Env):
         self.steps_since_rank_visible = 0
         self.max_steps_without_rank = 150
         self.current_lives = 4
-        self.check_lives_every = 50  # Check lives every N steps to save performance
+        self.check_lives_every = 25
         
         # State
         self.current_step = 0
