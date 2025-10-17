@@ -12,10 +12,16 @@ import os
 class HasteEnv(gym.Env):
     """Custom Environment for Haste game."""
     
-    def __init__(self, mouse_sensitivity=500, window_index=0):
+    def __init__(self, mouse_sensitivity=500):
         super(HasteEnv, self).__init__()
         
         # expanded action space
+        # Box with 5 values: [movement, mouse_x, mouse_y, fast_fall, speed_boost]
+        # movement: 0-4 (will be discretized)
+        # mouse_x: -1.0 to 1.0
+        # mouse_y: -1.0 to 1.0
+        # fast_fall: 0-1 (0=release space, 1=hold space)
+        # speed_boost: 0-1 (0=release click, 1=hold left click)
         self.action_space = gym.spaces.Box(
             low=np.array([0, -1.0, -1.0, 0, 0]),
             high=np.array([4, 1.0, 1.0, 1, 1]),
@@ -27,54 +33,35 @@ class HasteEnv(gym.Env):
             low=0, high=255, shape=(128, 128), dtype=np.uint8
         )
         
-        # SCALING FACTOR: 720p / 1080p
-        scale = 720 / 1080  # 0.667
-        
-        # TWO WINDOWS AT 1280x720
-        base_left = 0
-        base_top = 0
-        window_width = 1280
-        window_height = 720
-        window_offset = 1280
-        
-        self.window_index = window_index
+        # Screen capture setup
         self.sct = mss()
         self.monitor = {
-            "top": base_top,
-            "left": base_left + (window_index * window_offset),
-            "width": window_width,
-            "height": window_height
+            "top": 189,
+            "left": 320,
+            "width": 1913,
+            "height": 1075
         }
         
         # Rank region
         self.rank_region = {
-            "top": self.monitor["top"] + 120,
-            "left": self.monitor["left"] + 25,
-            "width": 67,
-            "height": 67
+            "top": self.monitor["top"] + 100,
+            "left": self.monitor["left"] + 0,
+            "width": 100,
+            "height": 100
         }
         
-        # Lives region
+        # Lives region (bottom center)
         self.lives_region = {
-            "top": self.monitor["top"] + 595,
-            "left": self.monitor["left"] + 600,
-            "width": 72,
-            "height": 18
+            "top": self.monitor["top"] + self.monitor["height"] - 245,  
+            "left": self.monitor["left"] + (self.monitor["width"] // 2) - 55,
+            "width": 100,
+            "height": 20
         }
         
         # Restart button positions
-        self.abandon_button = (
-            229 + (window_index * window_offset),
-            641
-        )
-        self.restart_button = (
-            229 + (window_index * window_offset),  # Same X as abandon
-            641  # Same Y as abandon
-        )
-        self.new_seed_button = (
-            532 + (window_index * window_offset),
-            452
-        )
+        self.abandon_button = (630, 1099)
+        self.restart_button = (589, 1074)
+        self.new_seed_button = (1068, 828)
         
         # Input controllers
         self.keyboard = Controller()
@@ -85,9 +72,9 @@ class HasteEnv(gym.Env):
         
         # Reward tracking
         self.previous_rank = 'E'
-        self.rank_values = {'E': 0, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6}
+        self.rank_values = {'E': 0, 'D': 1, 'C': 2, 'B': 4, 'A': 5, 'S': 6}
         self.episode_reward = 0
-            
+        
         # Load rank templates
         self.rank_templates = {}
         if os.path.exists('templates'):
@@ -141,8 +128,8 @@ class HasteEnv(gym.Env):
         movement = int(action[0])
         mouse_x = float(action[1])
         mouse_y = float(action[2])
-        fast_fall = int(action[3])
-        speed_boost = int(action[4])
+        fast_fall = int(action[3])  # 0 or 1
+        speed_boost = int(action[4])  # 0 or 1
         
         self._take_action(movement, mouse_x, mouse_y, fast_fall, speed_boost)
         time.sleep(0.05)
@@ -153,11 +140,13 @@ class HasteEnv(gym.Env):
         self.current_step += 1
         self.episode_reward += reward
         
-        # Check for death screen FIRST
+        # Check for death screen FIRST (before checking lives)
         if self._is_death_screen():
+            print("death screen detected - restarting")
             terminated = True
             truncated = False
             
+            # Death penalty
             death_penalty = -30.0 - (self.episode_reward * 0.5)
             reward += death_penalty
             
@@ -167,10 +156,13 @@ class HasteEnv(gym.Env):
         if self.current_step % self.check_lives_every == 0:
             self.current_lives = self._read_lives()
             
+            # Trigger restart if down to 1 life
             if self.current_lives == 1:
+                print("down to 1 life - restarting")
                 terminated = True
                 truncated = False
                 
+                # Death penalty
                 death_penalty = -10.0 - (self.episode_reward * 0.5)
                 reward += death_penalty
                 
@@ -180,6 +172,7 @@ class HasteEnv(gym.Env):
         terminated = self._is_game_over()
         truncated = self.current_step >= self.max_steps
         
+        # Death penalty
         if terminated:
             death_penalty = -10.0 - (self.episode_reward * 0.5)
             reward += death_penalty
@@ -198,6 +191,7 @@ class HasteEnv(gym.Env):
         """Extract red pixels from BGR image."""
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
         
+        # Red color range
         lower_red1 = np.array([0, 100, 100])
         upper_red1 = np.array([10, 255, 255])
         lower_red2 = np.array([160, 100, 100])
@@ -222,8 +216,10 @@ class HasteEnv(gym.Env):
             img = np.array(screenshot)
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             
+            # Extract red hearts
             red_only = self._extract_red(img)
             
+            # Match against templates
             best_match_score = -1
             best_lives = 4
             
@@ -244,15 +240,17 @@ class HasteEnv(gym.Env):
         return self.current_lives
     
     def _is_death_screen(self):
-        """Detect if on death/game over screen."""
+        """Detect if on death/game over screen by checking whole screen darkness."""
         try:
             screenshot = self.sct.grab(self.monitor)
             img = np.array(screenshot)
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             
+            # Death screen is mostly dark with diagonal lines
             avg_brightness = np.mean(img_gray)
             std_dev = np.std(img_gray)
             
+            # Death screen characteristics
             if avg_brightness < 30 and std_dev < 20:
                 return True
                 
@@ -263,6 +261,8 @@ class HasteEnv(gym.Env):
     
     def _auto_restart(self):
         """Automatically restart level with new seed."""
+        print("restarting level with new seed")
+        
         # Press ESC
         self.keyboard.press(Key.esc)
         time.sleep(0.1)
@@ -280,6 +280,8 @@ class HasteEnv(gym.Env):
         # Click new seed
         pyautogui.click(self.new_seed_button[0], self.new_seed_button[1])
         time.sleep(1.333)
+        
+        print("level restarted")
     
     def _read_rank(self):
         """Read rank using template matching."""
@@ -291,6 +293,7 @@ class HasteEnv(gym.Env):
             img = np.array(screenshot)
             img_gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
             
+            # Extract white letter
             _, mask = cv2.threshold(img_gray, 200, 255, cv2.THRESH_BINARY)
             kernel = np.ones((2,2), np.uint8)
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
@@ -299,6 +302,7 @@ class HasteEnv(gym.Env):
             processed = np.zeros_like(img_gray)
             processed[mask == 255] = 255
             
+            # Match against templates
             best_match_score = -1
             best_rank = None
             
@@ -344,16 +348,21 @@ class HasteEnv(gym.Env):
     
     def _is_game_over(self):
         """Detect if dead or level complete."""
+        # Check for death screen first
         if self._is_death_screen():
+            print("death screen detected")
             return True
         
+        # Fallback: check if rank missing for too long
         if self.steps_since_rank_visible >= self.max_steps_without_rank:
+            print("rank missing - assuming death")
             return True
         
         return False
     
     def _take_action(self, movement, mouse_x, mouse_y, fast_fall, speed_boost):
         """Execute game controls."""
+        # Handle movement (WASD)
         for key in ['w', 'a', 's', 'd']:
             if key in self.keys_pressed:
                 self.keyboard.release(key)
@@ -372,6 +381,7 @@ class HasteEnv(gym.Env):
             self.keyboard.press('d')
             self.keys_pressed.add('d')
         
+        # Handle fast fall (Space bar)
         if fast_fall == 1:
             if Key.space not in self.keys_pressed:
                 self.keyboard.press(Key.space)
@@ -381,6 +391,7 @@ class HasteEnv(gym.Env):
                 self.keyboard.release(Key.space)
                 self.keys_pressed.discard(Key.space)
         
+        # Handle speed boost (Left click)
         if speed_boost == 1:
             if 'left_click' not in self.keys_pressed:
                 pydirectinput.mouseDown()
@@ -390,6 +401,7 @@ class HasteEnv(gym.Env):
                 pydirectinput.mouseUp()
                 self.keys_pressed.discard('left_click')
         
+        # Handle mouse movement
         mouse_dx = int(mouse_x * self.mouse_sensitivity)
         mouse_dy = int(mouse_y * self.mouse_sensitivity)
         
@@ -398,13 +410,16 @@ class HasteEnv(gym.Env):
     
     def _release_all_keys(self):
         """Release all pressed keys."""
+        # Release WASD keys
         for key in list(self.keys_pressed):
             if key in ['w', 'a', 's', 'd']:
                 self.keyboard.release(key)
         
+        # Release space bar
         if Key.space in self.keys_pressed:
             self.keyboard.release(Key.space)
         
+        # Release left click
         if 'left_click' in self.keys_pressed:
             pydirectinput.mouseUp()
         
