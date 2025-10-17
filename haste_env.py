@@ -46,37 +46,36 @@ class HasteEnv(gym.Env):
             "height": window_height
         }
         
-        # Rank region - SCALED FROM 1080p
-        # Original: top offset = 100
+        # Rank region - YOUR EXACT VALUES
         self.rank_region = {
-            "top": self.monitor["top"] + int(100 * scale),  # 67
-            "left": self.monitor["left"] + 0,
-            "width": int(100 * scale),  # 67
-            "height": int(100 * scale)  # 67
+            "top": self.monitor["top"] + 120,
+            "left": self.monitor["left"] + 25,
+            "width": 67,
+            "height": 67
         }
         
-        # Lives region - SCALED FROM 1080p
-        # Original: height - 245, width/2 - 55, width=100, height=20
+        # Lives region - YOUR EXACT VALUES
+        # Top-left: (600, 560), Bottom-right: (672, 580)
+        # Width: 672-600=72, Height: 580-560=20
         self.lives_region = {
-            "top": self.monitor["top"] + self.monitor["height"] - int(245 * scale),  # ~164 from bottom
-            "left": self.monitor["left"] + (self.monitor["width"] // 2) - int(55 * scale),  # center - 37
-            "width": int(100 * scale),  # 67
-            "height": int(20 * scale)   # 13
+            "top": self.monitor["top"] + 560,
+            "left": self.monitor["left"] + 600,
+            "width": 72,  # 672 - 600
+            "height": 20  # 580 - 560
         }
         
         # Restart button positions - SCALED FROM 1080p
-        # Original 1080p positions: (630, 1099), (589, 1074), (1068, 828)
         self.abandon_button = (
-            int(630 * scale) + (window_index * window_offset),  # 420 + offset
-            int(1099 * scale)  # 733
+            int(630 * scale) + (window_index * window_offset),
+            int(1099 * scale)
         )
         self.restart_button = (
-            int(589 * scale) + (window_index * window_offset),  # 393 + offset
-            int(1074 * scale)  # 716
+            int(589 * scale) + (window_index * window_offset),
+            int(1074 * scale)
         )
         self.new_seed_button = (
-            int(1068 * scale) + (window_index * window_offset),  # 712 + offset
-            int(828 * scale)  # 552
+            int(1068 * scale) + (window_index * window_offset),
+            int(828 * scale)
         )
         
         # Input controllers
