@@ -10,9 +10,6 @@ def make_env(window_index):
         return HasteEnv(mouse_sensitivity=500, window_index=window_index)
     return _init
 
-print("creating parallel environments")
-
-# Start with 2 environments (you can try 3 later)
 num_envs = 2
 print(f"setting up {num_envs} parallel game instances")
 
