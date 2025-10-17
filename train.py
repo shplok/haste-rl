@@ -2,25 +2,36 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from haste_env import HasteEnv
 import time
+import os
+import glob
 
-print("Creating environment...")
+print("checking for existing checkpoints")
+
 env = HasteEnv(mouse_sensitivity=500)
 
-# Create PPO agent
-print("Creating PPO agent...")
-model = PPO(
-    "MlpPolicy",
-    env,
-    verbose=1,
-    learning_rate=3e-4,
-    n_steps=2048,
-    batch_size=64,
-    n_epochs=10,
-    gamma=0.99,
-    tensorboard_log="./logs/"
-)
+# Try to load most recent checkpoint
+checkpoints = glob.glob("models/haste_ppo_*.zip")
+if checkpoints:
+    latest_checkpoint = max(checkpoints, key=os.path.getctime)
+    print(f"found checkpoint: {latest_checkpoint}")
+    print("loading and continuing training...")
+    model = PPO.load(latest_checkpoint, env=env)
+    reset_timesteps = False
+else:
+    print("no checkpoints found - creating new model")
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        learning_rate=3e-4,
+        n_steps=2048,
+        batch_size=64,
+        n_epochs=10,
+        gamma=0.99,
+        tensorboard_log="./logs/"
+    )
+    reset_timesteps = True
 
-# Auto-save callback - saves every 10,000 steps
 checkpoint_callback = CheckpointCallback(
     save_freq=10000,
     save_path="./models/",
@@ -29,30 +40,25 @@ checkpoint_callback = CheckpointCallback(
     save_vecnormalize=False,
 )
 
-print("\nStarting training in 7 seconds...")
-print("Make sure Haste is running and you're in a level!")
+print("\nstarting training in 7 seconds")
 time.sleep(7)
 
-# Train
-print("\n" + "="*50)
-print("TRAINING STARTED")
-print("="*50)
-print("Press 'P' to pause/resume after death")
+print("training started")
 
 try:
     model.learn(
         total_timesteps=1000000,
         callback=checkpoint_callback,
-        progress_bar=True
+        progress_bar=True,
+        reset_num_timesteps=reset_timesteps
     )
     
-    # Save final model
     model.save("models/haste_ppo_final")
 
 except KeyboardInterrupt:
+    print("training interrupted")
     model.save("models/haste_ppo_interrupted")
 finally:
     env.close()
 
-print("\nTraining complete!")
-print("Check models/ folder for saved checkpoints")
+print("training complete")
