@@ -147,7 +147,7 @@ class HasteEnv(gym.Env):
             truncated = False
             
             # Death penalty
-            death_penalty = -10.0 - (self.episode_reward * 0.5)
+            death_penalty = -30.0 - (self.episode_reward * 0.5)
             reward += death_penalty
             
             return obs, reward, terminated, truncated, {}
