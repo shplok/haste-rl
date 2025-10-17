@@ -46,7 +46,7 @@ class HasteEnv(gym.Env):
             "height": window_height
         }
         
-        # Rank region - YOUR EXACT VALUES
+        # Rank region
         self.rank_region = {
             "top": self.monitor["top"] + 120,
             "left": self.monitor["left"] + 25,
@@ -54,28 +54,26 @@ class HasteEnv(gym.Env):
             "height": 67
         }
         
-        # Lives region - YOUR EXACT VALUES
-        # Top-left: (600, 560), Bottom-right: (672, 580)
-        # Width: 672-600=72, Height: 580-560=20
+        # Lives region
         self.lives_region = {
-            "top": self.monitor["top"] + 560,
+            "top": self.monitor["top"] + 595,
             "left": self.monitor["left"] + 600,
-            "width": 72,  # 672 - 600
-            "height": 20  # 580 - 560
+            "width": 72,
+            "height": 18
         }
         
-        # Restart button positions - SCALED FROM 1080p
+        # Restart button positions
         self.abandon_button = (
-            int(630 * scale) + (window_index * window_offset),
-            int(1099 * scale)
+            229 + (window_index * window_offset),
+            641
         )
         self.restart_button = (
-            int(589 * scale) + (window_index * window_offset),
-            int(1074 * scale)
+            229 + (window_index * window_offset),  # Same X as abandon
+            641  # Same Y as abandon
         )
         self.new_seed_button = (
-            int(1068 * scale) + (window_index * window_offset),
-            int(828 * scale)
+            532 + (window_index * window_offset),
+            452
         )
         
         # Input controllers
