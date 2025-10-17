@@ -15,14 +15,16 @@ class HasteEnv(gym.Env):
     def __init__(self, mouse_sensitivity=500):
         super(HasteEnv, self).__init__()
         
-        # Define action space - FLATTENED for PPO compatibility
-        # Box with 3 values: [movement, mouse_x, mouse_y]
-        # movement: 0-4 (will be discretized in _take_action)
+        # expanded action space
+        # Box with 5 values: [movement, mouse_x, mouse_y, fast_fall, speed_boost]
+        # movement: 0-4 (will be discretized)
         # mouse_x: -1.0 to 1.0
         # mouse_y: -1.0 to 1.0
+        # fast_fall: 0-1 (0=release space, 1=hold space)
+        # speed_boost: 0-1 (0=release click, 1=hold left click)
         self.action_space = gym.spaces.Box(
-            low=np.array([0, -1.0, -1.0]),
-            high=np.array([4, 1.0, 1.0]),
+            low=np.array([0, -1.0, -1.0, 0, 0]),
+            high=np.array([4, 1.0, 1.0, 1, 1]),
             dtype=np.float32
         )
         
@@ -51,11 +53,10 @@ class HasteEnv(gym.Env):
         # Lives region (bottom center)
         self.lives_region = {
             "top": self.monitor["top"] + self.monitor["height"] - 245,  
-            "left": self.monitor["left"] + (self.monitor["width"] // 2) - 55,  # Center, 400px wide
+            "left": self.monitor["left"] + (self.monitor["width"] // 2) - 55,
             "width": 100,
             "height": 20
         }
-
         
         # Restart button positions
         self.abandon_button = (630, 1099)
@@ -93,7 +94,7 @@ class HasteEnv(gym.Env):
         self.steps_since_rank_visible = 0
         self.max_steps_without_rank = 150
         self.current_lives = 4
-        self.check_lives_every = 25
+        self.check_lives_every = 10
         
         # State
         self.current_step = 0
@@ -123,12 +124,14 @@ class HasteEnv(gym.Env):
     
     def step(self, action):
         """Execute one step."""
-        # Parse flattened action
+        # Parse flattened action (now with 5 values)
         movement = int(action[0])
         mouse_x = float(action[1])
         mouse_y = float(action[2])
+        fast_fall = int(action[3])  # 0 or 1
+        speed_boost = int(action[4])  # 0 or 1
         
-        self._take_action(movement, mouse_x, mouse_y)
+        self._take_action(movement, mouse_x, mouse_y, fast_fall, speed_boost)
         time.sleep(0.05)
         
         obs = self._get_observation()
@@ -138,7 +141,6 @@ class HasteEnv(gym.Env):
         self.episode_reward += reward
         
         # Check for death screen FIRST (before checking lives)
-        # This prevents false positives when death screen hides hearts
         if self._is_death_screen():
             print("death screen detected - restarting")
             terminated = True
@@ -207,7 +209,7 @@ class HasteEnv(gym.Env):
     def _read_lives(self):
         """Read current lives using template matching."""
         if not self.lives_templates:
-            return 4  # Assume full lives if no templates
+            return 4
         
         try:
             screenshot = self.sct.grab(self.lives_region)
@@ -235,7 +237,7 @@ class HasteEnv(gym.Env):
         except Exception as e:
             pass
         
-        return self.current_lives  # Return previous value if detection fails
+        return self.current_lives
     
     def _is_death_screen(self):
         """Detect if on death/game over screen by checking whole screen darkness."""
@@ -248,9 +250,7 @@ class HasteEnv(gym.Env):
             avg_brightness = np.mean(img_gray)
             std_dev = np.std(img_gray)
             
-            # Death screen characteristics:
-            # - Very dark (low brightness)
-            # - Low variation (repeating diagonal pattern)
+            # Death screen characteristics
             if avg_brightness < 30 and std_dev < 20:
                 return True
                 
@@ -279,7 +279,7 @@ class HasteEnv(gym.Env):
         
         # Click new seed
         pyautogui.click(self.new_seed_button[0], self.new_seed_button[1])
-        time.sleep(2.0)
+        time.sleep(1.333)
         
         print("level restarted")
     
@@ -348,7 +348,7 @@ class HasteEnv(gym.Env):
     
     def _is_game_over(self):
         """Detect if dead or level complete."""
-        # Check for death screen first (more reliable)
+        # Check for death screen first
         if self._is_death_screen():
             print("death screen detected")
             return True
@@ -360,8 +360,9 @@ class HasteEnv(gym.Env):
         
         return False
     
-    def _take_action(self, movement, mouse_x, mouse_y):
+    def _take_action(self, movement, mouse_x, mouse_y, fast_fall, speed_boost):
         """Execute game controls."""
+        # Handle movement (WASD)
         for key in ['w', 'a', 's', 'd']:
             if key in self.keys_pressed:
                 self.keyboard.release(key)
@@ -380,6 +381,27 @@ class HasteEnv(gym.Env):
             self.keyboard.press('d')
             self.keys_pressed.add('d')
         
+        # Handle fast fall (Space bar)
+        if fast_fall == 1:
+            if Key.space not in self.keys_pressed:
+                self.keyboard.press(Key.space)
+                self.keys_pressed.add(Key.space)
+        else:
+            if Key.space in self.keys_pressed:
+                self.keyboard.release(Key.space)
+                self.keys_pressed.discard(Key.space)
+        
+        # Handle speed boost (Left click)
+        if speed_boost == 1:
+            if 'left_click' not in self.keys_pressed:
+                pydirectinput.mouseDown()
+                self.keys_pressed.add('left_click')
+        else:
+            if 'left_click' in self.keys_pressed:
+                pydirectinput.mouseUp()
+                self.keys_pressed.discard('left_click')
+        
+        # Handle mouse movement
         mouse_dx = int(mouse_x * self.mouse_sensitivity)
         mouse_dy = int(mouse_y * self.mouse_sensitivity)
         
@@ -388,9 +410,19 @@ class HasteEnv(gym.Env):
     
     def _release_all_keys(self):
         """Release all pressed keys."""
+        # Release WASD keys
         for key in list(self.keys_pressed):
             if key in ['w', 'a', 's', 'd']:
                 self.keyboard.release(key)
+        
+        # Release space bar
+        if Key.space in self.keys_pressed:
+            self.keyboard.release(Key.space)
+        
+        # Release left click
+        if 'left_click' in self.keys_pressed:
+            pydirectinput.mouseUp()
+        
         self.keys_pressed.clear()
     
     def close(self):
