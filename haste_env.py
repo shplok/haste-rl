@@ -168,7 +168,6 @@ class HasteEnv(gym.Env):
         # Check lives
         if self.current_step % self.check_lives_every == 0:
             self.current_lives = self._read_lives()
-            print("ow")
             if self.current_lives == 1:
                 print("down to 1 life - restarting")
                 terminated = True
