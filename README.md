@@ -42,22 +42,10 @@ pip install pillow
 
 ### 1. Game Configuration
 - Launch HASTE in **windowed mode** at **1920x1080** resolution
-- Position window at top-left of screen (or adjust coordinates in `haste_env.py`)
+- Do not move window, all the template coords are set for 1080p
 - Start a level before training begins
 
-### 2. Template Capture
-Capture game UI elements for detection:
-```bash
-# Capture rank letters (E, D, C, B, A, S)
-python capture_rank_templates.py
-
-# Capture lives indicators (1-4 hearts)
-python capture_lives_templates.py
-```
-
-Templates will be saved in `templates/` folder.
-
-### 3. Position Calibration
+### 2. Position Calibration
 Find exact screen coordinates for your setup:
 ```bash
 python find_positions.py
@@ -142,7 +130,7 @@ haste-rl/
     └── ...
 ```
 
-## 🔧 Customization
+## Customization
 
 ### Adjust Reward Weights
 Edit `haste_env.py`:
@@ -179,7 +167,7 @@ env = HasteEnv(mouse_sensitivity=500)  # Adjust for your preference
 - **Advanced training (200k-500k+)**: May achieve C/B ranks
 - **Expected time**: ~3-5 FPS → 100k steps takes ~9-12 hours
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Agent not controlling game
 - Ensure game window is in focus and active
