@@ -159,22 +159,11 @@ class HasteEnv(gym.Env):
             # Penalize for losing health quarters
             if current_health < self.previous_health_quarters:
                 quarters_lost = self.previous_health_quarters - current_health
-                damage_penalty = -5.0 * quarters_lost  # -5.0 per quarter lost
+                damage_penalty = -5.0 * quarters_lost
                 reward += damage_penalty
                 print(f"took damage: lost {quarters_lost} health quarter(s) - penalty: {damage_penalty:.2f}")
             
             self.previous_health_quarters = current_health
-        
-        # Check for death screen FIRST
-        if self._is_death_screen():
-            print("death screen detected - restarting")
-            terminated = True
-            truncated = False
-            
-            death_penalty = -30.0 - (self.episode_reward * 0.5)
-            reward += death_penalty
-            
-            return obs, reward, terminated, truncated, {}
         
         # Check lives
         if self.current_step % self.check_lives_every == 0:
@@ -189,16 +178,6 @@ class HasteEnv(gym.Env):
                 reward += death_penalty
                 
                 return obs, reward, terminated, truncated, {}
-        
-        # Fallback game over check
-        terminated = self._is_game_over()
-        truncated = self.current_step >= self.max_steps
-        
-        if terminated:
-            death_penalty = -10.0 - (self.episode_reward * 0.5)
-            reward += death_penalty
-        
-        return obs, reward, terminated, truncated, {}
     
     def _get_observation(self):
         """Capture and process screen."""
