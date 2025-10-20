@@ -1,6 +1,6 @@
 # haste-rl 
 
-Custom Reinforcement Learning agent for [HASTE](https://store.steampowered.com/app/1796470/Haste/) - Training an AI to master high-speed surfing!
+Custom Reinforcement Learning agent for [HASTE](https://store.steampowered.com/app/1796470/Haste/) - Training an AI to master high-speed parkour!
 
 ## Project Overview
 
