@@ -178,6 +178,17 @@ class HasteEnv(gym.Env):
                 reward += death_penalty
                 
                 return obs, reward, terminated, truncated, {}
+        
+        # Check for game over (death screen or rank missing)
+        terminated = self._is_game_over()
+        truncated = self.current_step >= self.max_steps
+        
+        # Apply death penalty if terminated
+        if terminated:
+            death_penalty = -30.0 - (self.episode_reward * 0.5)
+            reward += death_penalty
+        
+        return obs, reward, terminated, truncated, {}
     
     def _get_observation(self):
         """Capture and process screen."""
