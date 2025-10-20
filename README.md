@@ -45,14 +45,6 @@ pip install pillow
 - Do not move window, all the template coords are set for 1080p
 - Start a level before training begins
 
-### 2. Position Calibration
-Find exact screen coordinates for your setup:
-```bash
-python find_positions.py
-```
-
-Update coordinates in `haste_env.py` if needed.
-
 ## Training
 
 ### Start Training (Auto-resumes from checkpoints)
