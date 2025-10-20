@@ -57,6 +57,17 @@ class HasteEnv(gym.Env):
             "width": 100,
             "height": 20
         }
+
+        # Health bar region 
+        self.health_region = {
+            "top": 998,
+            "left": 1169,
+            "width": 205,
+            "height": 20
+        }
+        # 4 quarters - will need manually updated when i level up max health
+        self.previous_health_quarters = 4
+        self.check_health_every = 5  # Check every 5 steps
         
         # Restart button positions
         self.abandon_button = (630, 1099)
@@ -110,6 +121,7 @@ class HasteEnv(gym.Env):
         self.total_episodes += 1
         self.episode_reward = 0
         self.current_lives = 4
+        self.previous_health_quarters = 4
         
         self._release_all_keys()
         
@@ -124,12 +136,12 @@ class HasteEnv(gym.Env):
     
     def step(self, action):
         """Execute one step."""
-        # Parse flattened action (now with 5 values)
+        # Parse flattened action
         movement = int(action[0])
         mouse_x = float(action[1])
         mouse_y = float(action[2])
-        fast_fall = int(action[3])  # 0 or 1
-        speed_boost = int(action[4])  # 0 or 1
+        fast_fall = int(action[3])
+        speed_boost = int(action[4])
         
         self._take_action(movement, mouse_x, mouse_y, fast_fall, speed_boost)
         time.sleep(0.05)
@@ -140,39 +152,48 @@ class HasteEnv(gym.Env):
         self.current_step += 1
         self.episode_reward += reward
         
-        # Check for death screen FIRST (before checking lives)
+        # Check health periodically
+        if self.current_step % self.check_health_every == 0:
+            current_health = self._read_health_quarters()
+            
+            # Penalize for losing health quarters
+            if current_health < self.previous_health_quarters:
+                quarters_lost = self.previous_health_quarters - current_health
+                damage_penalty = -5.0 * quarters_lost  # -5.0 per quarter lost
+                reward += damage_penalty
+                print(f"took damage: lost {quarters_lost} health quarter(s) - penalty: {damage_penalty:.2f}")
+            
+            self.previous_health_quarters = current_health
+        
+        # Check for death screen FIRST
         if self._is_death_screen():
             print("death screen detected - restarting")
             terminated = True
             truncated = False
             
-            # Death penalty
             death_penalty = -30.0 - (self.episode_reward * 0.5)
             reward += death_penalty
             
             return obs, reward, terminated, truncated, {}
         
-        # Only check lives if NOT on death screen
+        # Check lives
         if self.current_step % self.check_lives_every == 0:
             self.current_lives = self._read_lives()
             
-            # Trigger restart if down to 1 life
             if self.current_lives == 1:
                 print("down to 1 life - restarting")
                 terminated = True
                 truncated = False
                 
-                # Death penalty
                 death_penalty = -30.0 - (self.episode_reward * 0.5)
                 reward += death_penalty
                 
                 return obs, reward, terminated, truncated, {}
         
-        # Fallback check for other game over conditions
+        # Fallback game over check
         terminated = self._is_game_over()
         truncated = self.current_step >= self.max_steps
         
-        # Death penalty
         if terminated:
             death_penalty = -10.0 - (self.episode_reward * 0.5)
             reward += death_penalty
@@ -238,6 +259,39 @@ class HasteEnv(gym.Env):
             pass
         
         return self.current_lives
+    
+
+    def _read_health_quarters(self):
+        """Read health by counting red quarters in health bar."""
+        try:
+            screenshot = self.sct.grab(self.health_region)
+            img = np.array(screenshot)
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            
+            # Extract red pixels (same as hearts)
+            red_only = self._extract_red(img)
+            
+            # Divide into 4 quarters and count which have red
+            width = red_only.shape[1]
+            quarter_width = width // 4
+            
+            quarters_filled = 0
+            for i in range(4):
+                start_x = i * quarter_width
+                end_x = start_x + quarter_width
+                quarter = red_only[:, start_x:end_x]
+                
+                # If quarter has significant red pixels, count it as filled
+                red_pixel_count = np.sum(quarter > 0)
+                total_pixels = quarter.shape[0] * quarter.shape[1]
+                
+                if red_pixel_count > (total_pixels * 0.3):  # 30% threshold
+                    quarters_filled += 1
+            
+            return quarters_filled
+            
+        except Exception as e:
+            return self.previous_health_quarters
     
     def _is_death_screen(self):
         """Detect if on death/game over screen by checking whole screen darkness."""
