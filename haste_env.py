@@ -30,7 +30,7 @@ class HasteEnv(gym.Env):
         
         # Observations: 128x128 grayscale image
         self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(128, 128), dtype=np.uint8
+            low=0, high=255, shape=(128, 128, 1), dtype=np.uint8
         )
         
         # Screen capture setup
@@ -196,7 +196,7 @@ class HasteEnv(gym.Env):
         img = np.array(screenshot)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
         img = cv2.resize(img, (128, 128))
-        return img
+        return img.reshape(128, 128, 1)
     
     def _extract_red(self, img):
         """Extract red pixels from BGR image."""
@@ -374,18 +374,18 @@ class HasteEnv(gym.Env):
         current_rank = self._read_rank()
         
         if current_rank is None:
-            return -0.01
+            return 0.0
         
         reward = 0.01
         
         rank_value = self.rank_values.get(current_rank, 0)
-        reward += rank_value * 0.2
+        reward = rank_value * 1.0
         
         prev_rank_value = self.rank_values.get(self.previous_rank, 0)
         if rank_value > prev_rank_value:
-            reward += 2.0
+            reward += 10.0
         elif rank_value < prev_rank_value:
-            reward -= 0.5
+            reward -= 2.0
         
         self.previous_rank = current_rank
         return reward

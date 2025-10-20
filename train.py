@@ -20,7 +20,7 @@ if checkpoints:
 else:
     print("no checkpoints found - creating new model")
     model = PPO(
-        "MlpPolicy",
+        "CnnPolicy",
         env,
         verbose=1,
         learning_rate=3e-4,
