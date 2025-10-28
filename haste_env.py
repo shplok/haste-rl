@@ -323,7 +323,7 @@ class HasteEnv(gym.Env):
         
         # Click new seed
         pyautogui.click(self.new_seed_button[0], self.new_seed_button[1])
-        time.sleep(1.333)
+        time.sleep(0.333)
         
         print("level restarted")
     
