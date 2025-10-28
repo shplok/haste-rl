@@ -1,9 +1,14 @@
+import torch_directml
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from haste_env import HasteEnv
 import time
 import os
 import glob
+
+# Setup DirectML device
+dml_device = torch_directml.device()
+print(f"Using DirectML device: {dml_device}")
 
 print("checking for existing checkpoints")
 
@@ -15,7 +20,7 @@ if checkpoints:
     latest_checkpoint = max(checkpoints, key=os.path.getctime)
     print(f"found checkpoint: {latest_checkpoint}")
     print("loading and continuing training...")
-    model = PPO.load(latest_checkpoint, env=env)
+    model = PPO.load(latest_checkpoint, env=env, device=dml_device)  # Add device here
     reset_timesteps = False
 else:
     print("no checkpoints found - creating new model")
@@ -28,7 +33,8 @@ else:
         batch_size=64,
         n_epochs=10,
         gamma=0.99,
-        tensorboard_log="./logs/"
+        tensorboard_log="./logs/",
+        device=dml_device
     )
     reset_timesteps = True
 
