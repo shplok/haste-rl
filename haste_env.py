@@ -129,7 +129,7 @@ class HasteEnv(gym.Env):
         if self.total_episodes > 1:
             self._auto_restart()
         
-        time.sleep(1)
+
         
         obs = self._get_observation()
         return obs, {}
