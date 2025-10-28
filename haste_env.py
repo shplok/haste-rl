@@ -30,7 +30,7 @@ class HasteEnv(gym.Env):
         
         # Observations: 128x128 grayscale image
         self.observation_space = gym.spaces.Box(
-            low=0, high=255, shape=(128, 128, 1), dtype=np.uint8
+            low=0, high=255, shape=(224, 224, 1), dtype=np.uint8
         )
         
         # Screen capture setup
@@ -195,8 +195,8 @@ class HasteEnv(gym.Env):
         screenshot = self.sct.grab(self.monitor)
         img = np.array(screenshot)
         img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-        img = cv2.resize(img, (128, 128))
-        return img.reshape(128, 128, 1)
+        img = cv2.resize(img, (224, 224))
+        return img.reshape(224, 224, 1)
     
     def _extract_red(self, img):
         """Extract red pixels from BGR image."""
