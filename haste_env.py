@@ -67,7 +67,7 @@ class HasteEnv(gym.Env):
         }
         # 4 quarters - will need manually updated when i level up max health
         self.previous_health_quarters = 4
-        self.check_health_every = 5  # Check every 5 steps
+        self.check_health_every = 15  # Check every 5 steps
         
         # Restart button positions
         self.abandon_button = (630, 1099)
@@ -144,7 +144,7 @@ class HasteEnv(gym.Env):
         speed_boost = int(action[4])
         
         self._take_action(movement, mouse_x, mouse_y, fast_fall, speed_boost)
-        time.sleep(0.05)
+        time.sleep(0.03)
         
         obs = self._get_observation()
         reward = self._calculate_reward()
